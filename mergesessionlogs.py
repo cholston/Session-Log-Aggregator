@@ -6,6 +6,8 @@ fvtt_file = 'fvtt.txt'
 transcribe_file = 'transcribe.txt'
 output_path = 'merged-session-transcript.txt'
 voice_cluster_seconds = 30
+recording_start_utc = datetime(2026, 1, 24, 19, 36, 50)  # UTC
+chat_log_time_offset = -5  # EST
 
 # Load full files
 with open(fvtt_file, 'r', encoding='utf-8') as f:
@@ -31,7 +33,6 @@ for block in blocks:
     fvtt_messages.append((ts, name, content, 'fvtt'))
 
 # --- Parse Google voice transcript ---
-recording_start_utc = datetime(2026, 1, 24, 19, 36, 50)  # UTC
 voice_lines = []
 
 for line in google_text.splitlines():
@@ -48,7 +49,7 @@ for line in google_text.splitlines():
         milliseconds=int(millis)
     )
     utc_time = recording_start_utc + delta
-    eastern_time = utc_time - timedelta(hours=5)  # EST
+    eastern_time = utc_time - timedelta(hours=chat_log_time_offset) 
     voice_lines.append((eastern_time, text))
 
 # --- Group consecutive voice lines (30s window) ---
