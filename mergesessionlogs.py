@@ -2,11 +2,13 @@
 from datetime import datetime, timedelta
 import re
 
+# Sat Feb 07 2026 21:28:54 GMT+0000
+
 fvtt_file = 'fvtt.txt'
 transcribe_file = 'transcribe.txt'
 output_path = 'merged-session-transcript.txt'
 voice_cluster_seconds = 30
-recording_start_utc = datetime(2026, 1, 24, 19, 36, 50)  # UTC
+recording_start_utc = datetime(2026, 2, 7, 21, 28, 54)  # UTC
 chat_log_time_offset = -5  # EST
 
 # Load full files
@@ -39,17 +41,17 @@ for line in google_text.splitlines():
     line = line.strip()
     if not line:
         continue
-    m = re.match(r'\[(\d+):(\d+):(\d+)\]\s*(.*)', line)
+    m = re.match(r'\[(\d+):(\d+)(?::(\d+))?\]\s*(.*)', line)
     if not m:
         continue
     minutes, seconds, millis, text = m.groups()
     delta = timedelta(
         minutes=int(minutes),
         seconds=int(seconds),
-        milliseconds=int(millis)
+        milliseconds=int(millis) if millis else 0
     )
     utc_time = recording_start_utc + delta
-    eastern_time = utc_time - timedelta(hours=chat_log_time_offset) 
+    eastern_time = utc_time + timedelta(hours=chat_log_time_offset) 
     voice_lines.append((eastern_time, text))
 
 # --- Group consecutive voice lines (30s window) ---
