@@ -1,4 +1,7 @@
 /archived
-/fvtt.txt
-/merged-session-transcript.txt
-/transcribe.txt
+/testdata
+/.env
+/run_app.bat
+/Session Log Creator.lnk
+/__pycache__
+

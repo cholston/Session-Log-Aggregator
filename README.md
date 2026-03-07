@@ -1,1 +1,1 @@
-A simple script for merging a FoundryVTT chat log with a recording transcript. The script normalizes dates and times and merges the entries into an FVTT-style log.
+This stopped being a simple script a long time ago. Now this monster is a full fledged application for merging FoundryVTT chat logs with a recording transcript. The script normalizes dates and times and merges the entries into an FVTT-style log.  You can give it a recording and it will transcribe through Gemini. 
