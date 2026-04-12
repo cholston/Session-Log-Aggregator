@@ -1,53 +1,40 @@
 import os
-from google import genai
-from google.genai import types
-import time
+import whisper
 
-def transcribe_audio(audio_path, api_key):
+def transcribe_whisper(audio_path):
     """
-    Uploads an audio file to Google Gemini and prompts it to generate
-    a timeline-stamped transcription matching the expected output format.
+    Transcribes an audio file using a locally-run OpenAI Whisper model.
+    Produces a timeline-stamped transcription matching the expected output format.
     Returns the path to the saved temporary transcript text file.
     """
-    client = genai.Client(api_key=api_key)
-
-    print(f"Uploading {audio_path}...")
-    audio_file = client.files.upload(file=audio_path)
-
-    # Wait for processing if necessary
-    while audio_file.state.name == "PROCESSING":
-        print(".", end="", flush=True)
-        time.sleep(2)
-        audio_file = client.files.get(name=audio_file.name)
-    print()
-
-    if audio_file.state.name == "FAILED":
-        raise Exception("Audio file processing failed on Google servers.")
-
-    prompt = (
-        "You are an expert transcriber. Transcribe the following audio file. "
-        "Provide your transcription as a plain text log with timestamps. "
-        "The format for each line MUST be `[MM:SS] Text content here` or `[MM:SS:ms] Text content here`."
-        "Do not include any other markdown formatting or conversational text."
-    )
-
-    print("Generating Transcript...")
-  
-    response = client.models.generate_content(
-        model='gemini-3-flash-preview',
-        contents=[audio_file, prompt]
-    )
-    
-    # Optional cleanup of the remote file (good practice)
     try:
-        client.files.delete(name=audio_file.name)
-    except Exception as e:
-        print(f"Warning: Failed to delete remote file: {e}")
+        print(f"Loading Whisper model...")
+        model = whisper.load_model("base")
 
-    transcript_text = response.text
-    
+        print(f"Transcribing {audio_path}...")
+        result = model.transcribe(audio_path, verbose=False)
+
+    except Exception as e:
+        # Re-raise with context so the GUI can catch it
+        raise RuntimeError(f"Whisper transcription failed: {str(e)}") from e
+
+    lines = []
+    for segment in result.get("segments", []):
+        start_sec = segment["start"]
+        minutes = int(start_sec // 60)
+        seconds = int(start_sec % 60)
+        timestamp = f"[{minutes:02d}:{seconds:02d}]"
+        text = segment["text"].strip()
+        lines.append(f"{timestamp} {text}")
+
+    transcript_text = "\n".join(lines)
+
     output_path = "temp_transcript.txt"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(transcript_text)
-        
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(transcript_text)
+    except Exception as e:
+        raise RuntimeError(f"Failed to write temporary transcript file: {str(e)}") from e
+
+    print("Transcription complete.")
     return os.path.abspath(output_path)

@@ -6,8 +6,10 @@ import shutil
 import threading
 from datetime import datetime
 from mergesessionlogs import merge_logs
-from transcription import transcribe_audio
+from transcription import transcribe_whisper
+from transcription_gemini import transcribe_gemini
 from dotenv import load_dotenv, set_key
+import traceback
 from foundry_scraper import download_foundry_chat_log
 
 ctk.set_appearance_mode("Dark")
@@ -29,6 +31,7 @@ class LogAggregatorApp(ctk.CTk):
         self.fvtt_path_var = tk.StringVar()
         self.transcript_path_var = tk.StringVar()
         self.api_key_var = tk.StringVar()
+        self.transcription_mode = tk.StringVar(value="whisper")
         
         load_dotenv(env_path)
         if os.getenv("GEMINI_API_KEY"):
@@ -65,7 +68,7 @@ class LogAggregatorApp(ctk.CTk):
         self.transcript_button.grid(row=1, column=2, padx=(0, 20), pady=10)
         
         # API Key Row
-        self.api_key_label = ctk.CTkLabel(self, text="Gemini API Key\n(Required for Audio):", anchor="w")
+        self.api_key_label = ctk.CTkLabel(self, text="Gemini API Key\n(Optional - not used for audio):", anchor="w")
         self.api_key_label.grid(row=2, column=0, padx=20, pady=10, sticky="w")
         
         self.api_key_entry = ctk.CTkEntry(self, textvariable=self.api_key_var, show="*")
@@ -79,13 +82,26 @@ class LogAggregatorApp(ctk.CTk):
         self.time_entry.insert(0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.time_entry.grid(row=3, column=1, padx=(0, 20), pady=10, sticky="ew", columnspan=2)
 
+        # Transcription Mode Row
+        self.mode_label = ctk.CTkLabel(self, text="Transcription Method:", anchor="w")
+        self.mode_label.grid(row=4, column=0, padx=20, pady=10, sticky="w")
+
+        self.mode_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.mode_frame.grid(row=4, column=1, padx=(0, 20), pady=10, sticky="ew", columnspan=2)
+
+        self.whisper_radio = ctk.CTkRadioButton(self.mode_frame, text="Whisper (Local)", variable=self.transcription_mode, value="whisper")
+        self.whisper_radio.pack(side="left", padx=(0, 20))
+
+        self.gemini_radio = ctk.CTkRadioButton(self.mode_frame, text="Gemini (Cloud)", variable=self.transcription_mode, value="gemini")
+        self.gemini_radio.pack(side="left")
+
         # Merge Button
         self.merge_button = ctk.CTkButton(self, text="Merge Logs", command=self.process_merge_thread, height=40, font=ctk.CTkFont(size=14, weight="bold"))
-        self.merge_button.grid(row=4, column=0, columnspan=3, padx=20, pady=30, sticky="ew")
+        self.merge_button.grid(row=5, column=0, columnspan=3, padx=20, pady=30, sticky="ew")
 
         # Status Label
         self.status_label = ctk.CTkLabel(self, text="Ready", text_color="gray")
-        self.status_label.grid(row=5, column=0, columnspan=3, padx=20, pady=10)
+        self.status_label.grid(row=6, column=0, columnspan=3, padx=20, pady=10)
 
     def browse_fvtt(self):
         filename = filedialog.askopenfilename(
@@ -216,10 +232,7 @@ class LogAggregatorApp(ctk.CTk):
                 return
                 
             is_audio = not transcript_path.lower().endswith('.txt')
-            if is_audio:
-                if not api_key_val:
-                    self.after(0, lambda: messagebox.showerror("Error", "A Gemini API Key is required to transcribe audio files."))
-                    return
+            if is_audio and api_key_val:
                 set_key(env_path, "GEMINI_API_KEY", api_key_val)
 
             initial_dir = self.last_output_dir if self.last_output_dir else os.path.expanduser("~")
@@ -241,8 +254,16 @@ class LogAggregatorApp(ctk.CTk):
             self.after(0, lambda: self.status_label.configure(text="Processing...", text_color="yellow"))
 
             if is_audio:
-                self.after(0, lambda: self.status_label.configure(text="Transcribing audio with Gemini...\n(This can take several minutes, please wait)", text_color="yellow"))
-                transcript_path = transcribe_audio(transcript_path, api_key_val)
+                mode = self.transcription_mode.get()
+                if mode == "whisper":
+                    self.after(0, lambda: self.status_label.configure(text="Transcribing audio with Whisper...\n(This may take a few minutes, please wait)", text_color="yellow"))
+                    transcript_path = transcribe_whisper(transcript_path)
+                else:
+                    if not api_key_val:
+                        self.after(0, lambda: messagebox.showwarning("Warning", "Gemini API Key is required for Gemini transcription."))
+                        return
+                    self.after(0, lambda: self.status_label.configure(text="Transcribing audio with Gemini...\n(Uploading and generating...)", text_color="yellow"))
+                    transcript_path = transcribe_gemini(transcript_path, api_key_val)
 
             self.after(0, lambda: self.status_label.configure(text="Merging logs...", text_color="yellow"))
                 
@@ -261,8 +282,10 @@ class LogAggregatorApp(ctk.CTk):
             self.after(0, lambda: messagebox.showinfo("Success", "Log merge completed successfully."))
             
         except Exception as e:
+            error_details = traceback.format_exc()
+            print(error_details)
             self.after(0, lambda: self.status_label.configure(text="Error occurred", text_color="red"))
-            self.after(0, lambda: messagebox.showerror("Error", f"An error occurred while merging logs:\n{str(e)}"))
+            self.after(0, lambda: messagebox.showerror("Execution Error", f"An error occurred:\n\n{str(e)}\n\nSee below for details:\n{error_details}"))
         finally:
             self.after(0, lambda: self.merge_button.configure(state="normal"))
 
