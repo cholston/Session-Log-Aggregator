@@ -16,6 +16,18 @@
             "program": "${workspaceFolder}/app.py",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Python: Session Wrap (CLI)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/session_wrap.py",
+            "args": [
+                "--craig-url", "https://craig.horse/rec/qCAQocNjWqQD?key=n62bXa",
+                "--transcription", "gemini"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }

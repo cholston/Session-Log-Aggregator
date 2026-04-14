@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import re
 
 
-def merge_logs(fvtt_path, transcript_path, output_path, start_time, voice_cluster_seconds=30):
+def merge_logs(fvtt_path, transcript_path, output_path, start_time, speaker_name="Player", voice_cluster_seconds=30):
     # Load full files
     with open(fvtt_path, 'r', encoding='utf-8') as f:
         fvtt_text = f.read()
@@ -60,12 +60,12 @@ def merge_logs(fvtt_path, transcript_path, output_path, start_time, voice_cluste
         elif (ts - current_ts).total_seconds() <= voice_cluster_seconds:
             current_text.append(text)
         else:
-            grouped_voice.append((current_ts, "Debinani", "\n".join(current_text), 'voice'))
+            grouped_voice.append((current_ts, speaker_name, "\n".join(current_text), 'voice'))
             current_ts = ts
             current_text = [text]
 
     if current_ts is not None:
-        grouped_voice.append((current_ts, "Debinani", "\n".join(current_text), 'voice'))
+        grouped_voice.append((current_ts, speaker_name, "\n".join(current_text), 'voice'))
 
     # --- Merge and sort ---
     all_messages = fvtt_messages + grouped_voice

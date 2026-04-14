@@ -47,11 +47,11 @@ def transcribe_gemini(audio_path, api_key):
 
         transcript_text = response.text
         
-        output_path = "temp_transcript.txt"
+        output_path = os.path.join(os.path.dirname(os.path.abspath(audio_path)), "transcript.txt")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(transcript_text)
-            
-        return os.path.abspath(output_path)
+
+        return output_path
     except Exception as e:
         # Re-raise with context so the GUI can catch it
         raise RuntimeError(f"Gemini transcription failed: {str(e)}") from e

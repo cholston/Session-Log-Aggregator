@@ -5,12 +5,12 @@ import os
 import shutil
 import threading
 from datetime import datetime
-from mergesessionlogs import merge_logs
-from transcription import transcribe_whisper
-from transcription_gemini import transcribe_gemini
+from modules.mergesessionlogs import merge_logs
+from modules.transcription import transcribe_whisper
+from modules.transcription_gemini import transcribe_gemini
 from dotenv import load_dotenv, set_key
 import traceback
-from foundry_scraper import download_foundry_chat_log
+from modules.foundry_scraper import download_foundry_chat_log
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
