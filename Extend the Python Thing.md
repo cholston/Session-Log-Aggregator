@@ -9,7 +9,7 @@ Extend an existing Python application to automate the post-session workflow afte
 ## Invocation Target
 
 ```bash
-python session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --next-session "2026-04-26 19:00"
+python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --next-session "2026-04-26 19:00"
 ```
 
 These are the **only two manual inputs** required from the user after a session ends.

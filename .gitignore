@@ -1,10 +1,8 @@
-/archived
-/testdata
 /working
 /.env
-/run_app.bat
-/Session Log Creator.lnk
 /__pycache__
 /modules/__pycache__
+/archimedes/__pycache__
+/archimedes/cogs/__pycache__
 /session_config.toml
 

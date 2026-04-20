@@ -18,6 +18,14 @@
             "justMyCode": true
         },
         {
+            "name": "Python: Archimedes Bot",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/archimedes.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Session Wrap (CLI)",
             "type": "debugpy",
             "request": "launch",

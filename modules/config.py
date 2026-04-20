@@ -39,12 +39,23 @@ class FoundryConfig:
 
 
 @dataclass
+class DiscordConfig:
+    token: str          # from .env: DISCORD_BOT_TOKEN
+    guild_id: int       # from session_config.toml [discord]
+    session_channel_id: int  # channel for session announcements
+    event_name: str          # display name for the scheduled event
+    voice_channel_id: int    # voice channel the event takes place in (0 = external/FoundryVTT)
+    event_image_path: str    # local path to image file for event cover (empty = none)
+
+
+@dataclass
 class AppConfig:
     paths: Paths
     recording: RecordingConfig
     obsidian: ObsidianConfig
     claude: ClaudeConfig
     foundry: FoundryConfig
+    discord: DiscordConfig
 
 
 def load_config(config_path: str = CONFIG_PATH) -> AppConfig:
@@ -102,4 +113,21 @@ def load_config(config_path: str = CONFIG_PATH) -> AppConfig:
         password=os.getenv("FOUNDRY_PASSWORD", ""),
     )
 
-    return AppConfig(paths=paths, recording=recording, obsidian=obsidian, claude=claude, foundry=foundry)
+    discord_raw = raw.get("discord", {})
+    discord_cfg = DiscordConfig(
+        token=os.getenv("DISCORD_BOT_TOKEN", ""),
+        guild_id=int(discord_raw.get("guild_id", 0)),
+        session_channel_id=int(discord_raw.get("session_channel_id", 0)),
+        event_name=discord_raw.get("event_name", "Next Session"),
+        voice_channel_id=int(discord_raw.get("voice_channel_id", 0)),
+        event_image_path=discord_raw.get("event_image_path", ""),
+    )
+
+    return AppConfig(
+        paths=paths,
+        recording=recording,
+        obsidian=obsidian,
+        claude=claude,
+        foundry=foundry,
+        discord=discord_cfg,
+    )

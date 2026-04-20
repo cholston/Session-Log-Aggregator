@@ -2,9 +2,9 @@
 Post-Session Agent — orchestrates the full post-TTRPG-session workflow.
 
 Usage:
-    python session_wrap.py --craig-url "https://craig.horse/rec/XXXXX"
-    python session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --transcription gemini
-    python session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --start-time "2026-04-13 19:00:00"
+    python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX"
+    python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --transcription gemini
+    python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX" --start-time "2026-04-13 19:00:00"
 
 Re-run / recovery options (each skips earlier steps using saved state or provided paths):
     --audio-path path/to/audio.ogg   Skip Craig download; re-transcribe existing audio
@@ -111,8 +111,8 @@ def parse_args():
     p.add_argument(
         "--transcription",
         choices=["whisper", "gemini"],
-        default="whisper",
-        help="Transcription backend (default: whisper). Change this to retry with a different engine.",
+        default="gemini",
+        help="Transcription backend (default: gemini). Change this to retry with a different engine.",
     )
     p.add_argument(
         "--skip-foundry",
@@ -138,6 +138,12 @@ def parse_args():
         "--transcript-path",
         default=None,
         help="Path to an already-transcribed .txt file — skips download and transcription entirely. Requires --start-time.",
+    )
+    p.add_argument(
+        "--next-session",
+        default=None,
+        metavar="DATETIME",
+        help="Schedule the next session as a Discord event, e.g. '2026-04-26 19:00'",
     )
     p.add_argument(
         "--skip-claude",
@@ -385,6 +391,39 @@ def main():
         print(f"  Campaign data      : {state.vault_campaign_data}")
     print(f"  State file         : {os.path.join(working_dir, STATE_FILE)}")
     print("=" * 60)
+
+    # ------------------------------------------------------------------ #
+    # Discord — schedule next session event
+    # ------------------------------------------------------------------ #
+    if args.next_session:
+        print(f"\n[Discord] Scheduling next session: {args.next_session}")
+        try:
+            next_dt = datetime.strptime(args.next_session, "%Y-%m-%d %H:%M").astimezone()
+        except ValueError:
+            print("WARNING: --next-session must be 'YYYY-MM-DD HH:MM'. Skipping Discord event.")
+            next_dt = None
+
+        if next_dt:
+            if not config.discord.token:
+                print("WARNING: DISCORD_BOT_TOKEN not set in .env. Skipping Discord event.")
+            elif not config.discord.guild_id:
+                print("WARNING: discord.guild_id not set in session_config.toml. Skipping Discord event.")
+            else:
+                try:
+                    from archimedes.actions import create_session_event
+                    date_str = start_time.strftime("%Y-%m-%d")
+                    event_id = create_session_event(
+                        token=config.discord.token,
+                        guild_id=config.discord.guild_id,
+                        name=config.discord.event_name,
+                        start_time=next_dt,
+                        description=f"Post-session {date_str} — next up on {next_dt.strftime('%A, %B %-d')}",
+                        voice_channel_id=config.discord.voice_channel_id,
+                        image_path=config.discord.event_image_path,
+                    )
+                    print(f"  Discord event created (id: {event_id})")
+                except Exception as exc:
+                    print(f"WARNING: Discord event creation failed: {exc}")
 
     # ------------------------------------------------------------------ #
     # Claude Code handoff
