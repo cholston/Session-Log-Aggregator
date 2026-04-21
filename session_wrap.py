@@ -456,7 +456,7 @@ def main():
         next_end_dt = next_dt + timedelta(hours=2.5)
         session_desc = (
             f"Post-session {start_time.strftime('%Y-%m-%d')} — "
-            f"next up on {next_dt.strftime('%A, %B %-d')}"
+            f"next up on {next_dt.strftime('%A, %B')} {next_dt.day}"
         )
 
         # Discord
