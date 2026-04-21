@@ -29,7 +29,7 @@ class SessionCog(commands.Cog, name="Session"):
         date='Session date and time, e.g. "2026-04-26 19:00" (local server time)',
         name="Event title (overrides config default)",
         description="Optional event description",
-        duration_hours="Session length in hours (default: 4)",
+        duration_hours="Session length in hours (default: 2.5)",
     )
     async def schedule_session(
         self,
@@ -37,7 +37,7 @@ class SessionCog(commands.Cog, name="Session"):
         date: str,
         name: str = "",
         description: str = "",
-        duration_hours: float = 4.0,
+        duration_hours: float = 2.5,
     ):
         await interaction.response.defer(ephemeral=True)
 

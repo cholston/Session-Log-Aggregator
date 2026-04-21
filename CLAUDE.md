@@ -15,8 +15,11 @@ A GUI (`app.py`) also exists for manual one-off merges.
 python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX?key=YYYYY"
 python3 session_wrap.py --craig-url "..." --transcription whisper
 
-# With Discord event scheduling for the next session
+# With Discord + Google Calendar scheduling for the next session
 python3 session_wrap.py --craig-url "..." --next-session "2026-04-26 19:00"
+
+# Test Google Calendar in isolation (no Craig URL needed)
+python3 session_wrap.py --gcal-only --next-session "2026-04-26 19:00"
 
 # Recovery / re-run options (each skips earlier steps using saved state)
 python3 session_wrap.py --craig-url "..." --skip-foundry --chat-log path/to/chat.txt
@@ -57,6 +60,7 @@ Note: `python` (without 3) is not on PATH on this machine — use `python3`.
 | [modules/foundry_scraper.py](modules/foundry_scraper.py) | Playwright automation for FoundryVTT — `download_foundry_exports` (macro + chat log), `download_foundry_chat_log` (GUI compat) |
 | [modules/craig_download.py](modules/craig_download.py) | Playwright download of Craig ZIP, OGG extraction, start time scrape |
 | [modules/file_manager.py](modules/file_manager.py) | Copies merged transcript + campaign data into Obsidian vault folders |
+| [modules/gcal.py](modules/gcal.py) | Google Calendar event creation — resolves a Contacts label to emails via People API, creates event with attendees |
 
 **Discord bot** (`archimedes/`):
 
@@ -66,12 +70,14 @@ Note: `python` (without 3) is not on PATH on this machine — use `python3`.
 | [archimedes/actions.py](archimedes/actions.py) | One-shot async helpers (`create_session_event`, `post_message`) used by `session_wrap.py` without a persistent bot |
 | [archimedes/cogs/session.py](archimedes/cogs/session.py) | `/schedule-session` and `/session-recap` slash commands |
 
-**Config** (gitignored):
+**Config**:
 
 | File | Purpose |
 |---|---|
-| [session_config.toml](session_config.toml) | Non-secret config: paths, speaker name, vault settings, Claude prompt template, Discord IDs |
-| [.env](.env) | Secrets: `GEMINI_API_KEY`, `FOUNDRY_URL`, `FOUNDRY_USERNAME`, `FOUNDRY_PASSWORD`, `DISCORD_BOT_TOKEN` |
+| [session_config.toml.template](session_config.toml.template) | Checked-in template — copy to `session_config.toml` and fill in values |
+| `session_config.toml` | Non-secret config: paths, speaker name, vault settings, Claude prompt template, Discord IDs, GCal settings (gitignored) |
+| `.env` | Secrets: `GEMINI_API_KEY`, `FOUNDRY_URL`, `FOUNDRY_USERNAME`, `FOUNDRY_PASSWORD`, `DISCORD_BOT_TOKEN` (gitignored) |
+| `gcal_token.json` | Cached OAuth2 token written after first Google Calendar consent flow (gitignored) |
 
 ## Architecture
 
@@ -81,7 +87,7 @@ Note: `python` (without 3) is not on PATH on this machine — use `python3`.
 3. **Transcription**: `transcribe_whisper` or `transcribe_gemini` — output written to `working/YYYY-MM-DD/transcript.txt`.
 4. **Merge**: `merge_logs()` converts timestamps to absolute `datetime`, clusters voice lines in 30-second windows, merges with FVTT entries, sorts, writes Markdown.
 5. **Vault copy**: `copy_to_vault()` places `YYYY-MM-DD-Transcript.md` and `YYYY-MM-DD - foundry-snapshot.md` in configured Obsidian folders.
-5.5. **Discord event** (optional): if `--next-session` is provided, calls `archimedes.actions.create_session_event()` — spins up a temporary Discord client, creates the guild scheduled event, then exits. No persistent bot process needed.
+5.5. **Scheduling** (optional): if `--next-session` is provided, both Discord and Google Calendar events are created from a shared `next_dt`/`next_end_dt` (start + 2.5 h). Discord calls `archimedes.actions.create_session_event()` — spins up a temporary client and exits. Google Calendar calls `modules.gcal.create_calendar_event()` — resolves the configured Contacts label to attendee emails via the People API, then inserts the event.
 6. **Claude Code handoff**: writes `_session_prompt.md` to the working dir (not the vault), launches `claude` CLI with the vault as cwd.
 
 ### Discord bot (`archimedes/`)
@@ -126,6 +132,9 @@ Fill in `session_config.toml`:
 - `recording.speaker_name` — used to select the right OGG track from Craig ZIP and attribute voice lines
 - `discord.guild_id` — Discord server (guild) snowflake ID; used for slash command sync and event creation
 - `discord.session_channel_id` — channel where session recap links are posted
+- `google_calendar.contact_group` — Google Contacts label name (case-insensitive); resolved to member emails via People API
+- `google_calendar.credentials_path` — path to OAuth2 client secret JSON downloaded from Google Cloud Console
+- `google_calendar.token_path` — cached token path (default: `gcal_token.json`); auto-created on first run
 - Secrets in `.env`: `FOUNDRY_URL`, `FOUNDRY_USERNAME`, `FOUNDRY_PASSWORD`, `GEMINI_API_KEY`, `DISCORD_BOT_TOKEN`
 
 **Windows paths in TOML must use single quotes** (TOML literal strings) to avoid backslash escape issues:
@@ -139,7 +148,8 @@ A `session_state.json` inside each `working/YYYY-MM-DD/` folder records step out
 
 - Python 3.11+ (`tomllib` is stdlib)
 - `customtkinter`, `openai-whisper`, `google-genai`, `playwright`, `python-dotenv`
-- `discord.py>=2.0` — Discord bot (`pip install discord.py`)
+- `discord.py>=2.0` — Discord bot
+- `google-auth-oauthlib`, `google-api-python-client` — Google Calendar + People API
 - `playwright install chromium` required for browser automation
 - Gemini API key only needed for Gemini transcription mode
 - `claude` CLI must be on PATH for the Claude Code handoff step
@@ -152,7 +162,7 @@ A `session_state.json` inside each `working/YYYY-MM-DD/` folder records step out
 3. Transcription — Whisper (local) or Gemini (cloud)
 4. Merge transcript + chat log → dated Markdown
 5. Copy to Obsidian vault (`YYYY-MM-DD-Transcript.md`, `YYYY-MM-DD - foundry-snapshot.md`)
-6. Discord event creation (optional, `--next-session`)
+6. Discord + Google Calendar event creation (optional, `--next-session`); events default to 2.5 h duration
 7. Claude Code handoff — writes `_session_prompt.md`, launches `claude` in vault dir
 
 ### Archimedes Discord bot (working)
@@ -161,8 +171,14 @@ A `session_state.json` inside each `working/YYYY-MM-DD/` folder records step out
 - `/session-recap` — posts a notes URL to `session_channel_id`
 - One-shot helpers in `archimedes/actions.py` used by `session_wrap.py` (no persistent bot needed)
 
+### Google Calendar (working)
+- `modules/gcal.py` — `create_calendar_event()` handles OAuth2 token caching, People API group resolution, and Calendar API event insertion
+- Uses `[google_calendar]` section in `session_config.toml`; no new `.env` entries needed
+- `--gcal-only --next-session "YYYY-MM-DD HH:MM"` skips the full pipeline for isolated testing
+- Requires **Google Calendar API** and **Google People API** both enabled in the same Google Cloud project
+- First run opens a browser for OAuth consent; token cached to `gcal_token.json` afterwards
+
 ### Deferred / not yet implemented
-- Google Calendar integration
 - Obsidian CLI publish automation
 - Wire `post_message()` into `session_wrap.py` as a post-session announce step (helper exists, not called)
 - Additional Archimedes cogs (bot is intentionally modular)
@@ -191,6 +207,23 @@ Use `replace` with an explicitly derived local timezone instead:
 local_tz = datetime.now().astimezone().tzinfo
 start_time = naive_dt.replace(tzinfo=local_tz)
 ```
+
+## Google Calendar / People API gotchas
+
+### Token scope changes
+`Credentials.from_authorized_user_file` loads a cached token successfully even if the token is missing scopes added since it was created. `creds.valid` returns `True` and the error only surfaces when the API call is made. The fix is to check `set(SCOPES).issubset(set(creds.scopes or []))` after loading — `creds.scopes` is `None` on older tokens, so the `or []` is required to avoid the `and` short-circuiting and skipping re-auth.
+
+### Contact group resolution
+Google Contacts labels have no email address of their own. Resolution requires two People API calls:
+1. `contactGroups().list()` — find the group `resourceName` by matching `name` (case-insensitive)
+2. `contactGroups().get(maxMembers=500)` → `people().getBatchGet(personFields="emailAddresses")` — collect one address per member
+
+If the group name doesn't match, the error prints all available `USER_CONTACT_GROUP` names.
+
+### Google Cloud Console setup checklist
+- Enable **Google Calendar API** and **Google People API** in the same project
+- Create an **OAuth 2.0 client ID** (Desktop app type) and download the JSON as `credentials.json`
+- Under **OAuth consent screen → Test users**, add your own Google account before the first run
 
 ## Rules
 

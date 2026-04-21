@@ -46,6 +46,16 @@ class DiscordConfig:
     event_name: str          # display name for the scheduled event
     voice_channel_id: int    # voice channel the event takes place in (0 = external/FoundryVTT)
     event_image_path: str    # local path to image file for event cover (empty = none)
+    wonder_dragon_art_path: str  # local path to ASCII art file for /WonderDragon (empty = none)
+
+
+@dataclass
+class GoogleCalendarConfig:
+    event_name: str        # display name for the calendar event
+    contact_group: str     # email to invite/notify (Google Group or individual)
+    calendar_id: str       # "primary" or a specific calendar ID
+    credentials_path: str  # path to OAuth2 client secret JSON from Google Cloud Console
+    token_path: str        # path where the cached OAuth token is stored
 
 
 @dataclass
@@ -56,6 +66,7 @@ class AppConfig:
     claude: ClaudeConfig
     foundry: FoundryConfig
     discord: DiscordConfig
+    google_calendar: GoogleCalendarConfig
 
 
 def load_config(config_path: str = CONFIG_PATH) -> AppConfig:
@@ -121,6 +132,16 @@ def load_config(config_path: str = CONFIG_PATH) -> AppConfig:
         event_name=discord_raw.get("event_name", "Next Session"),
         voice_channel_id=int(discord_raw.get("voice_channel_id", 0)),
         event_image_path=discord_raw.get("event_image_path", ""),
+        wonder_dragon_art_path=discord_raw.get("wonder_dragon_art_path", ""),
+    )
+
+    gcal_raw = raw.get("google_calendar", {})
+    gcal_cfg = GoogleCalendarConfig(
+        event_name=gcal_raw.get("event_name", "TTRPG Session"),
+        contact_group=gcal_raw.get("contact_group", ""),
+        calendar_id=gcal_raw.get("calendar_id", "primary"),
+        credentials_path=gcal_raw.get("credentials_path", ""),
+        token_path=gcal_raw.get("token_path", "gcal_token.json"),
     )
 
     return AppConfig(
@@ -130,4 +151,5 @@ def load_config(config_path: str = CONFIG_PATH) -> AppConfig:
         claude=claude,
         foundry=foundry,
         discord=discord_cfg,
+        google_calendar=gcal_cfg,
     )

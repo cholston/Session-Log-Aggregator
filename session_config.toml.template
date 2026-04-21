@@ -1,0 +1,66 @@
+[paths]
+# Working directory for all session files (Foundry exports, Craig downloads, transcripts).
+# A date-stamped subfolder (e.g. working/2026-04-13/) is created automatically per session.
+working_dir = "working"
+
+# Root of your Obsidian vault that you want Claude to start in
+obsidian_vault_dir = 'C:\path\to\your\Obsidian\Vault'
+
+# Subfolder within vault where session note files are placed
+obsidian_session_dir = 'C:\path\to\your\Obsidian\Vault\Session Notes\chatlogs'
+
+# Subfolder within vault where campaign data export is placed
+obsidian_campaign_data_dir = 'C:\path\to\your\Obsidian\Vault\Session Notes\foundry-snapshot'
+
+[recording]
+# Name to look for in the Craig OGG filename and to attribute voice lines in the merged log.
+# Craig names per-user tracks like "1-username.ogg"
+speaker_name = "your-craig-username"
+
+[obsidian]
+# Vault name as it appears in obsidian:// URIs
+vault_name = "Your Vault Name"
+
+# Templater command ID for triggering the session notes template
+# Find via: Obsidian > Developer Tools > app.commands.commands
+session_notes_command_id = ""
+
+[claude]
+# Prompt template passed to Claude Code when launching the review session.
+# Use {transcript_path} and {campaign_data_path} as placeholders.
+context_prompt = """You are helping write session notes for a TTRPG campaign.
+
+The session transcript (merged chat log + audio transcription) is at: {transcript_path}
+The campaign data export is at: {campaign_data_path}
+
+Please read both files and then:
+1. Write Session Notes for the latest session
+2. Perform wiki enrichment based on the transcription and session notes
+"""
+
+[discord]
+# Right-click your server → Copy Server ID
+guild_id = 0
+# Right-click the channel where session recaps are posted → Copy Channel ID
+session_channel_id = 0
+# Display name for the scheduled event
+event_name = "Next Session"
+# Right-click your voice channel → Copy Channel ID (0 = external/FoundryVTT)
+voice_channel_id = 0
+# Local path to a banner image for the Discord event (leave empty for none)
+event_image_path = ''
+# Local path to ASCII art file displayed by the bot (leave empty for none)
+wonder_dragon_art_path = ''
+
+[google_calendar]
+# Display name for the calendar event
+event_name = "TTRPG Session"
+# Name of a Google Contacts label whose members will be invited
+contact_group = "Your Contact Group Name"
+# "primary" or a specific calendar ID from calendar.google.com settings
+calendar_id = "primary"
+# Path to the OAuth2 client secret JSON downloaded from Google Cloud Console
+# APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app
+credentials_path = 'C:\path\to\credentials.json'
+# Where to cache the OAuth token after first login (relative path is fine)
+token_path = "gcal_token.json"

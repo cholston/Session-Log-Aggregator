@@ -11,6 +11,7 @@ from discord.ext import commands
 # All cog modules to load at startup
 COGS = [
     "archimedes.cogs.session",
+    "archimedes.cogs.wonder_dragon",
 ]
 
 

@@ -5,4 +5,6 @@
 /archimedes/__pycache__
 /archimedes/cogs/__pycache__
 /session_config.toml
+/gcal_token.json
+
 

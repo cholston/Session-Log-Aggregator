@@ -31,7 +31,7 @@ import os
 import sys
 import subprocess
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from modules.config import load_config
 from modules.foundry_scraper import download_foundry_exports
@@ -100,7 +100,8 @@ def parse_args():
     )
     p.add_argument(
         "--craig-url",
-        required=True,
+        required=False,
+        default="",
         help="Craig recording URL, e.g. https://craig.horse/rec/XXXXX",
     )
     p.add_argument(
@@ -149,6 +150,11 @@ def parse_args():
         "--skip-claude",
         action="store_true",
         help="Do not launch Claude Code at the end; just drop files into the vault",
+    )
+    p.add_argument(
+        "--gcal-only",
+        action="store_true",
+        help="Skip the full pipeline; only create the Google Calendar event. Requires --next-session.",
     )
     return p.parse_args()
 
@@ -208,6 +214,48 @@ def launch_claude(vault_dir: str, working_dir: str, prompt: str):
 def main():
     args = parse_args()
     config = load_config()
+
+    # ------------------------------------------------------------------ #
+    # --gcal-only: skip pipeline, just create the Google Calendar event
+    # ------------------------------------------------------------------ #
+    if args.gcal_only:
+        if not args.next_session:
+            print("ERROR: --gcal-only requires --next-session 'YYYY-MM-DD HH:MM'")
+            sys.exit(1)
+        try:
+            local_tz = datetime.now().astimezone().tzinfo
+            next_dt = datetime.strptime(args.next_session, "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
+        except ValueError:
+            print("ERROR: --next-session must be 'YYYY-MM-DD HH:MM'")
+            sys.exit(1)
+        gcal = config.google_calendar
+        if not gcal.credentials_path:
+            print("ERROR: google_calendar.credentials_path not set in session_config.toml")
+            sys.exit(1)
+        if not gcal.contact_group:
+            print("ERROR: google_calendar.contact_group not set in session_config.toml")
+            sys.exit(1)
+        from modules.gcal import create_calendar_event
+        end_dt = next_dt + timedelta(hours=2.5)
+        print(f"Creating Google Calendar event: {gcal.event_name}")
+        print(f"  Start : {next_dt}")
+        print(f"  End   : {end_dt}")
+        print(f"  Notify: {gcal.contact_group}")
+        event_link = create_calendar_event(
+            credentials_path=gcal.credentials_path,
+            token_path=gcal.token_path,
+            calendar_id=gcal.calendar_id,
+            event_name=gcal.event_name,
+            start_time=next_dt,
+            end_time=end_dt,
+            contact_group=gcal.contact_group,
+        )
+        print(f"Done: {event_link}")
+        return
+
+    if not args.craig_url:
+        print("ERROR: --craig-url is required unless --gcal-only is set")
+        sys.exit(1)
 
     # Determine working dir — use today's date; we may rename after getting start_time
     working_dir = make_working_dir(config.paths.working_dir)
@@ -393,37 +441,67 @@ def main():
     print("=" * 60)
 
     # ------------------------------------------------------------------ #
-    # Discord — schedule next session event
+    # Schedule next session — Discord event + Google Calendar
     # ------------------------------------------------------------------ #
+    next_dt = None
     if args.next_session:
-        print(f"\n[Discord] Scheduling next session: {args.next_session}")
+        print(f"\n[Next session] Scheduling: {args.next_session}")
         try:
-            next_dt = datetime.strptime(args.next_session, "%Y-%m-%d %H:%M").astimezone()
+            local_tz = datetime.now().astimezone().tzinfo
+            next_dt = datetime.strptime(args.next_session, "%Y-%m-%d %H:%M").replace(tzinfo=local_tz)
         except ValueError:
-            print("WARNING: --next-session must be 'YYYY-MM-DD HH:MM'. Skipping Discord event.")
-            next_dt = None
+            print("WARNING: --next-session must be 'YYYY-MM-DD HH:MM'. Skipping scheduling steps.")
 
-        if next_dt:
-            if not config.discord.token:
-                print("WARNING: DISCORD_BOT_TOKEN not set in .env. Skipping Discord event.")
-            elif not config.discord.guild_id:
-                print("WARNING: discord.guild_id not set in session_config.toml. Skipping Discord event.")
-            else:
-                try:
-                    from archimedes.actions import create_session_event
-                    date_str = start_time.strftime("%Y-%m-%d")
-                    event_id = create_session_event(
-                        token=config.discord.token,
-                        guild_id=config.discord.guild_id,
-                        name=config.discord.event_name,
-                        start_time=next_dt,
-                        description=f"Post-session {date_str} — next up on {next_dt.strftime('%A, %B %-d')}",
-                        voice_channel_id=config.discord.voice_channel_id,
-                        image_path=config.discord.event_image_path,
-                    )
-                    print(f"  Discord event created (id: {event_id})")
-                except Exception as exc:
-                    print(f"WARNING: Discord event creation failed: {exc}")
+    if next_dt:
+        next_end_dt = next_dt + timedelta(hours=2.5)
+        session_desc = (
+            f"Post-session {start_time.strftime('%Y-%m-%d')} — "
+            f"next up on {next_dt.strftime('%A, %B %-d')}"
+        )
+
+        # Discord
+        if not config.discord.token:
+            print("[Discord] DISCORD_BOT_TOKEN not set in .env — skipping.")
+        elif not config.discord.guild_id:
+            print("[Discord] discord.guild_id not set in session_config.toml — skipping.")
+        else:
+            try:
+                from archimedes.actions import create_session_event
+                event_id = create_session_event(
+                    token=config.discord.token,
+                    guild_id=config.discord.guild_id,
+                    name=config.discord.event_name,
+                    start_time=next_dt,
+                    description=session_desc,
+                    voice_channel_id=config.discord.voice_channel_id,
+                    image_path=config.discord.event_image_path,
+                )
+                print(f"  [Discord] Event created (id: {event_id})")
+            except Exception as exc:
+                print(f"WARNING: Discord event creation failed: {exc}")
+
+        # Google Calendar
+        gcal = config.google_calendar
+        if not gcal.credentials_path:
+            print("[GCal] google_calendar.credentials_path not set in session_config.toml — skipping.")
+        elif not gcal.contact_group:
+            print("[GCal] google_calendar.contact_group not set in session_config.toml — skipping.")
+        else:
+            try:
+                from modules.gcal import create_calendar_event
+                event_link = create_calendar_event(
+                    credentials_path=gcal.credentials_path,
+                    token_path=gcal.token_path,
+                    calendar_id=gcal.calendar_id,
+                    event_name=gcal.event_name,
+                    start_time=next_dt,
+                    end_time=next_end_dt,
+                    contact_group=gcal.contact_group,
+                    description=session_desc,
+                )
+                print(f"  [GCal] Event created: {event_link}")
+            except Exception as exc:
+                print(f"WARNING: Google Calendar event creation failed: {exc}")
 
     # ------------------------------------------------------------------ #
     # Claude Code handoff

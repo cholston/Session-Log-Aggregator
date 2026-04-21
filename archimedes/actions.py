@@ -52,7 +52,7 @@ def create_session_event(
     name: str,
     start_time: datetime,
     description: str = "",
-    duration_hours: float = 4.0,
+    duration_hours: float = 2.5,
     voice_channel_id: int = 0,
     image_path: str = "",
     location: str = "FoundryVTT",
