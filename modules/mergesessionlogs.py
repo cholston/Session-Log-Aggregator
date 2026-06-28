@@ -34,10 +34,16 @@ def merge_logs(fvtt_path, transcript_path, output_path, start_time, speaker_name
         line = line.strip()
         if not line:
             continue
-        m = re.match(r'\[(\d+):(\d+)(?::(\d+))?\]\s*(.*)', line)
-        if not m:
-            continue
-        minutes, seconds, millis, text = m.groups()
+        # Format 1: [ 1m13s545ms ] text  (Gemini verbose style)
+        m = re.match(r'\[\s*(\d+)m(\d+)s(?:(\d+)ms)?\s*\]\s*(.*)', line)
+        if m:
+            minutes, seconds, millis, text = m.groups()
+        else:
+            # Format 2: [MM:SS] or [MM:SS:ms] text  (standard style)
+            m = re.match(r'\[(\d+):(\d+)(?::(\d+))?\]\s*(.*)', line)
+            if not m:
+                continue
+            minutes, seconds, millis, text = m.groups()
         delta = timedelta(
             minutes=int(minutes),
             seconds=int(seconds),

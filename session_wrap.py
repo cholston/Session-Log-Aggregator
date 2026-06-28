@@ -112,8 +112,8 @@ def parse_args():
     p.add_argument(
         "--transcription",
         choices=["whisper", "gemini"],
-        default="gemini",
-        help="Transcription backend (default: gemini). Change this to retry with a different engine.",
+        default="whisper",
+        help="Transcription backend (default: whisper). Use --transcription gemini to switch.",
     )
     p.add_argument(
         "--skip-foundry",

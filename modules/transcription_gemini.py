@@ -28,17 +28,20 @@ def transcribe_gemini(audio_path, api_key):
         prompt = (
             "You are an expert transcriber. Transcribe the following audio file. "
             "Provide your transcription as a plain text log with timestamps. "
-            "The format for each line MUST be `[MM:SS] Text content here` or `[MM:SS:ms] Text content here`."
-            "Do not include any other markdown formatting or conversational text."
+            "Each line MUST use exactly this format: [MM:SS] Text content here\n"
+            "where MM is total elapsed minutes (may exceed 59) and SS is seconds (00-59). "
+            "Example: [04:32] Hello everyone.\n"
+            "Do NOT use formats like [ 1m13s545ms ] or any other style. "
+            "Do not include any markdown formatting, headers, or conversational text — only timestamped lines."
         )
 
         print("Generating Transcript...")
         
         response = client.models.generate_content(
-            model='gemini-3-flash-preview',
+            model='gemini-3.5-flash',
             contents=[audio_file, prompt]
         )
-        
+
         # Optional cleanup of the remote file (good practice)
         try:
             client.files.delete(name=audio_file.name)
@@ -46,6 +49,8 @@ def transcribe_gemini(audio_path, api_key):
             print(f"Warning: Failed to delete remote file: {e}")
 
         transcript_text = response.text
+        if not transcript_text:
+            raise RuntimeError("Gemini returned an empty transcript. Check the model name, API key, and audio file.")
         
         output_path = os.path.join(os.path.dirname(os.path.abspath(audio_path)), "transcript.txt")
         with open(output_path, "w", encoding="utf-8") as f:

@@ -40,7 +40,7 @@ DISCORD_BOT_TOKEN=your-token
 python3 session_wrap.py --craig-url "https://craig.horse/rec/XXXXX?key=YYYYY"
 
 # Full pipeline + schedule next session (Discord + Google Calendar)
-python3 session_wrap.py --craig-url "..." --next-session "2026-04-26 19:00"
+python3 session_wrap.py --craig-url "..." --next-session "2026-04-26 14:30"  --transcription gemini
 
 # Test Google Calendar in isolation (no Craig URL needed)
 python3 session_wrap.py --gcal-only --next-session "2026-04-26 19:00"

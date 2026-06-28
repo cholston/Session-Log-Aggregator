@@ -80,13 +80,26 @@ def _click_ogg_and_download(page):
     try:
         download_btn = page.locator("button.svelte-1klcfz0").filter(has_text="Download").first
         download_btn.wait_for(state="visible", timeout=360000)
-        print("Download button ready — triggering download...")
-        with page.expect_download(timeout=60000) as dl_info:
-            download_btn.dispatch_event("click")
-        return dl_info.value
     except Exception as e:
-        print(f"Error triggering download: {e}")
+        print(f"Error waiting for Download button: {e}")
         return None
+
+    # Craig may still be finalizing the file server-side even after the Download
+    # button appears, so the actual download can take >60s to start. Retry a few
+    # times with a generous per-attempt timeout before giving up.
+    for attempt in range(1, 4):
+        print(f"Download button ready — triggering download (attempt {attempt}/3)...")
+        try:
+            with page.expect_download(timeout=180000) as dl_info:
+                download_btn.dispatch_event("click")
+            return dl_info.value
+        except Exception as e:
+            print(f"Attempt {attempt} timed out: {e}")
+            if attempt < 3:
+                print("Retrying...")
+
+    print("Error: download did not start after 3 attempts.")
+    return None
 
 
 def _extract_ogg(zip_path: str, output_dir: str, speaker_name: str = "") -> str | None:
@@ -154,7 +167,6 @@ def download_craig_recording(craig_url: str, output_dir: str = "testdata", speak
             # Trigger OGG download
             download = _click_ogg_and_download(page)
             if not download:
-                print("Error: Craig download did not start.")
                 browser.close()
                 return None, start_time
 
