@@ -13,12 +13,14 @@ event attendees. If the cached token predates the contacts scope being added,
 delete gcal_token.json and re-run to trigger a fresh OAuth consent.
 """
 
+import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 
 SCOPES = [
@@ -27,14 +29,31 @@ SCOPES = [
 ]
 
 
+def _token_file_scopes(token_path: str) -> set[str]:
+    """
+    Read the scopes actually recorded in the cached token file.
+
+    Do not use creds.scopes for this. Credentials.from_authorized_user_file
+    only falls back to the file's scopes when its scopes argument is None —
+    pass SCOPES and creds.scopes comes back as exactly SCOPES no matter what
+    the token was granted, so comparing the two always says they match.
+    """
+    try:
+        with open(token_path) as f:
+            scopes = json.load(f).get("scopes") or []
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if isinstance(scopes, str):
+        scopes = scopes.split(" ")
+    return set(scopes)
+
+
 def _get_credentials(credentials_path: str, token_path: str) -> Credentials:
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
         # Force re-auth if the cached token is missing any required scope.
-        # creds.scopes can be None for older tokens, treat that as empty.
-        if creds and not set(SCOPES).issubset(set(creds.scopes or [])):
-            creds = None
+        if set(SCOPES).issubset(_token_file_scopes(token_path)):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -44,6 +63,94 @@ def _get_credentials(credentials_path: str, token_path: str) -> Credentials:
         with open(token_path, "w") as f:
             f.write(creds.to_json())
     return creds
+
+
+def validate_credentials(
+    credentials_path: str,
+    token_path: str,
+    calendar_id: str = "primary",
+    contact_group: str = "",
+) -> bool:
+    """
+    Check whether the cached OAuth token is still usable, without ever opening
+    a browser. Prints a per-stage report and returns True only if both the
+    Calendar and People APIs answered.
+
+    An expired access token is not a failure on its own — they live about an
+    hour, so the cached one is almost always stale between runs. The real test
+    is whether the refresh token still works; a successful silent refresh is
+    written back to token_path so the next run starts warm.
+    """
+    print(f"  Token file  : {token_path}")
+    print(f"  Credentials : {credentials_path} "
+          f"({'found' if os.path.exists(credentials_path) else 'MISSING'})")
+
+    if not os.path.exists(token_path):
+        print("  RESULT: no cached token - the next run will open the OAuth consent browser.")
+        return False
+
+    missing = set(SCOPES) - _token_file_scopes(token_path)
+    if missing:
+        print(f"  Scopes      : MISSING {sorted(missing)}")
+        print(f"  RESULT: delete {token_path} and re-run to re-consent with the full scope set.")
+        return False
+    print("  Scopes      : ok (calendar.events + contacts.readonly)")
+
+    creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+    print(f"  Expiry      : {creds.expiry} UTC "
+          f"({'still valid' if creds.valid else 'stale - will refresh'})")
+
+    if not creds.valid:
+        if not creds.refresh_token:
+            print("  Refresh     : NO REFRESH TOKEN")
+            print(f"  RESULT: delete {token_path} and re-run to re-consent.")
+            return False
+        try:
+            creds.refresh(Request())
+        except RefreshError as exc:
+            print(f"  Refresh     : FAILED - {exc}")
+            print("  RESULT: the refresh token is dead. If the OAuth consent screen is still in")
+            print("          'Testing' status, Google expires refresh tokens after 7 days.")
+            print(f"          Delete {token_path} and re-run to re-consent.")
+            return False
+        print(f"  Refresh     : ok - new expiry {creds.expiry} UTC")
+        with open(token_path, "w") as f:
+            f.write(creds.to_json())
+
+    try:
+        calendar_service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+        calendar_service.events().list(
+            calendarId=calendar_id,
+            maxResults=1,
+            timeMin=datetime.now(timezone.utc).isoformat(),
+        ).execute()
+        print(f"  Calendar API: ok (calendar '{calendar_id}' readable)")
+    except Exception as exc:
+        print(f"  Calendar API: FAILED - {type(exc).__name__}: {exc}")
+        print("  RESULT: check that the Google Calendar API is enabled for this project.")
+        return False
+
+    try:
+        people_service = build("people", "v1", credentials=creds, cache_discovery=False)
+        if contact_group:
+            emails = _resolve_contact_group(people_service, contact_group)
+            print(f"  People API  : ok - group '{contact_group}' resolved to "
+                  f"{len(emails)} attendee(s): {', '.join(emails)}")
+        else:
+            people_service.contactGroups().list(pageSize=1).execute()
+            print("  People API  : ok (no contact_group configured, group lookup skipped)")
+    except ValueError as exc:
+        # Raised by _resolve_contact_group — the token is fine, the label isn't.
+        print(f"  People API  : reachable, but group lookup failed - {exc}")
+        return False
+    except Exception as exc:
+        print(f"  People API  : FAILED - {type(exc).__name__}: {exc}")
+        print("  RESULT: check that the Google People API is enabled for this project.")
+        return False
+
+    print("  RESULT: token is active and both APIs work.")
+    return True
 
 
 def _resolve_contact_group(people_service, group_name: str) -> list[str]:

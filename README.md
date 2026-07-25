@@ -32,6 +32,9 @@ DISCORD_BOT_TOKEN=your-token
 4. Add yourself as a test user under OAuth consent screen → Test users
 5. Set `credentials_path` in `session_config.toml` to the downloaded JSON
 6. On first run a browser will open for consent; the token is cached to `gcal_token.json` after that
+7. Run `python3 session_wrap.py --gcal-check` any time to confirm the cached token still works
+
+Note: while the OAuth consent screen is in **Testing** status, Google expires refresh tokens after 7 days, so `--gcal-check` will eventually report a dead token and you'll need to re-consent. Publishing the app stops that.
 
 ## Usage
 
@@ -44,6 +47,9 @@ python3 session_wrap.py --craig-url "..." --next-session "2026-04-26 14:30"  --t
 
 # Test Google Calendar in isolation (no Craig URL needed)
 python3 session_wrap.py --gcal-only --next-session "2026-04-26 19:00"
+
+# Check whether the cached Google token still works (never opens a browser)
+python3 session_wrap.py --gcal-check
 
 # Recovery options
 python3 session_wrap.py --craig-url "..." --skip-foundry --chat-log path/to/chat.txt

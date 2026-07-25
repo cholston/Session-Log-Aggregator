@@ -21,6 +21,9 @@ python3 session_wrap.py --craig-url "..." --next-session "2026-04-26 19:00"
 # Test Google Calendar in isolation (no Craig URL needed)
 python3 session_wrap.py --gcal-only --next-session "2026-04-26 19:00"
 
+# Validate the cached Google OAuth token (read-only, never opens a browser)
+python3 session_wrap.py --gcal-check
+
 # Recovery / re-run options (each skips earlier steps using saved state)
 python3 session_wrap.py --craig-url "..." --skip-foundry --chat-log path/to/chat.txt
 python3 session_wrap.py --craig-url "..." --audio-path path/to/audio.ogg --start-time "2026-04-13 19:00:00"
@@ -175,6 +178,7 @@ A `session_state.json` inside each `working/YYYY-MM-DD/` folder records step out
 - `modules/gcal.py` — `create_calendar_event()` handles OAuth2 token caching, People API group resolution, and Calendar API event insertion
 - Uses `[google_calendar]` section in `session_config.toml`; no new `.env` entries needed
 - `--gcal-only --next-session "YYYY-MM-DD HH:MM"` skips the full pipeline for isolated testing
+- `--gcal-check` validates the cached token (scopes, silent refresh, both API probes) and exits 0/1
 - Requires **Google Calendar API** and **Google People API** both enabled in the same Google Cloud project
 - First run opens a browser for OAuth consent; token cached to `gcal_token.json` afterwards
 
@@ -211,7 +215,25 @@ start_time = naive_dt.replace(tzinfo=local_tz)
 ## Google Calendar / People API gotchas
 
 ### Token scope changes
-`Credentials.from_authorized_user_file` loads a cached token successfully even if the token is missing scopes added since it was created. `creds.valid` returns `True` and the error only surfaces when the API call is made. The fix is to check `set(SCOPES).issubset(set(creds.scopes or []))` after loading — `creds.scopes` is `None` on older tokens, so the `or []` is required to avoid the `and` short-circuiting and skipping re-auth.
+`Credentials.from_authorized_user_file` loads a cached token successfully even if the token is missing scopes added since it was created. `creds.valid` returns `True` and the error only surfaces when the API call is made.
+
+**Do not check this via `creds.scopes`.** `from_authorized_user_info` only falls back to the file's scopes when its `scopes` argument is `None`:
+
+```python
+if scopes is None and "scopes" in info:
+    scopes = info.get("scopes")
+```
+
+Because the loader is called as `from_authorized_user_file(token_path, SCOPES)`, `creds.scopes` always comes back as exactly `SCOPES` regardless of what the token was actually granted — so `set(SCOPES).issubset(creds.scopes)` is always `True` and never catches anything.
+
+The working check reads the scopes out of the token JSON directly, via `_token_file_scopes()` in [modules/gcal.py](modules/gcal.py). Note the `scopes` value in the file can be a list *or* a space-delimited string, and may be absent entirely on older tokens.
+
+### Validating a cached token
+`validate_credentials()` in [modules/gcal.py](modules/gcal.py), exposed as `python3 session_wrap.py --gcal-check`, checks the token without ever opening a browser. It never calls `InstalledAppFlow`, so it is safe to run unattended; exit code is 0 for a live token and 1 for one needing re-consent.
+
+Stages, in the order things actually fail: token file present → scopes recorded in the file → silent refresh → Calendar API probe → People API probe + contact-group resolution. A successful refresh is written back to `token_path` so the next real run starts with a live access token.
+
+An expired `expiry` in `gcal_token.json` means nothing on its own — access tokens last ~1 hour, so the cached one is stale between essentially every run. Only a `RefreshError` (`invalid_grant`) on refresh indicates a genuinely dead token. The usual cause is the OAuth consent screen still being in **Testing** publishing status, which caps refresh token lifetime at 7 days.
 
 ### Contact group resolution
 Google Contacts labels have no email address of their own. Resolution requires two People API calls:

@@ -12,6 +12,7 @@ Re-run / recovery options (each skips earlier steps using saved state or provide
     --skip-foundry --chat-log <path> Skip Foundry automation; provide chat log manually
     --transcription whisper|gemini   Switch backend (e.g. after a Gemini 503)
     --skip-claude                    Don't launch Claude Code at the end
+    --gcal-check                     Validate the cached Google Calendar token and exit
 
 A session_state.json file is written to the working directory after each step.
 Re-running the same command resumes from the last successful step automatically.
@@ -156,6 +157,12 @@ def parse_args():
         action="store_true",
         help="Skip the full pipeline; only create the Google Calendar event. Requires --next-session.",
     )
+    p.add_argument(
+        "--gcal-check",
+        action="store_true",
+        help="Validate the cached Google Calendar token and exit. Never opens a browser; "
+             "exits 0 if the token still works, 1 if it needs re-consent.",
+    )
     return p.parse_args()
 
 
@@ -214,6 +221,24 @@ def launch_claude(vault_dir: str, working_dir: str, prompt: str):
 def main():
     args = parse_args()
     config = load_config()
+
+    # ------------------------------------------------------------------ #
+    # --gcal-check: validate the cached token and exit
+    # ------------------------------------------------------------------ #
+    if args.gcal_check:
+        gcal = config.google_calendar
+        if not gcal.credentials_path:
+            print("ERROR: google_calendar.credentials_path not set in session_config.toml")
+            sys.exit(1)
+        from modules.gcal import validate_credentials
+        print("Validating Google Calendar credentials...")
+        ok = validate_credentials(
+            credentials_path=gcal.credentials_path,
+            token_path=gcal.token_path,
+            calendar_id=gcal.calendar_id,
+            contact_group=gcal.contact_group,
+        )
+        sys.exit(0 if ok else 1)
 
     # ------------------------------------------------------------------ #
     # --gcal-only: skip pipeline, just create the Google Calendar event
